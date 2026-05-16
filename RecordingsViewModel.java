@@ -17,88 +17,95 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 public class RecordingsViewModel extends AndroidViewModel {
-    private final RecordingDao recordingDao;
+    private final RecordingDao dao;
     private final LiveData<List<Recording>> allRecordings;
-    private final LiveData<List<Recording>> starredRecordings;
-    private final MutableLiveData<Integer> filterType = new MutableLiveData<>();
-    private final MutableLiveData<String> searchQuery = new MutableLiveData<>();
+    private final MutableLiveData<Integer> filterType = new MutableLiveData<>(0);
+    private final MutableLiveData<String> searchQuery = new MutableLiveData<>("");
+
+    // Statistics LiveData
+    public final LiveData<Integer> totalCount;
+    public final LiveData<Long> totalDuration;
+    public final LiveData<Integer> incomingCount;
+    public final LiveData<Integer> outgoingCount;
+    public final LiveData<Integer> starredCount;
+    public final LiveData<Long> totalFileSize;
 
     public RecordingsViewModel(@NonNull Application application) {
         super(application);
-        recordingDao = AppDatabase.getInstance(application).recordingDao();
-        allRecordings = recordingDao.getAllRecordings();
-        starredRecordings = recordingDao.getStarredRecordings();
-        
-        // Set default filter to show all recordings
-        filterType.setValue(0);
-        searchQuery.setValue("");
-    }
+        dao = AppDatabase.getInstance(application).recordingDao();
+        allRecordings = dao.getAllRecordings();
 
-    public LiveData<List<Recording>> getAllRecordings() {
-        return allRecordings;
-    }
-
-    public LiveData<List<Recording>> getStarredRecordings() {
-        return starredRecordings;
+        totalCount = dao.getTotalCount();
+        totalDuration = dao.getTotalDuration();
+        incomingCount = dao.getIncomingCount();
+        outgoingCount = dao.getOutgoingCount();
+        starredCount = dao.getStarredCount();
+        totalFileSize = dao.getTotalFileSize();
     }
 
     public LiveData<List<Recording>> getFilteredRecordings() {
         return Transformations.switchMap(filterType, type -> {
-            if (type == 0) {
-                return allRecordings;
-            } else if (type == -1) {
-                return starredRecordings;
-            } else {
-                return recordingDao.getRecordingsByType(type);
+            switch (type) {
+                case -1: return dao.getStarredRecordings();
+                case -2: return dao.getBookmarkedRecordings();
+                case 1: return dao.getRecordingsByType(1);
+                case 2: return dao.getRecordingsByType(2);
+                default: return allRecordings;
             }
         });
     }
 
     public LiveData<List<Recording>> getSearchResults() {
         return Transformations.switchMap(searchQuery, query -> {
-            if (query == null || query.isEmpty()) {
+            if (query == null || query.trim().isEmpty()) {
                 return getFilteredRecordings();
-            } else {
-                return recordingDao.searchRecordings(query);
             }
+            return dao.searchRecordings(query.trim());
         });
     }
 
-    public void setFilter(int type) {
-        filterType.setValue(type);
-    }
+    public LiveData<List<Recording>> getAllRecordings() { return allRecordings; }
 
-    public void setSearchQuery(String query) {
-        searchQuery.setValue(query);
-    }
+    public void setFilter(int type) { filterType.setValue(type); }
+    public void setSearchQuery(String query) { searchQuery.setValue(query); }
+    public int getCurrentFilter() { return filterType.getValue() != null ? filterType.getValue() : 0; }
 
     public void toggleStar(Recording recording) {
         recording.setStarred(!recording.isStarred());
         updateRecording(recording);
     }
 
+    public void toggleBookmark(Recording recording) {
+        recording.setBookmarked(!recording.isBookmarked());
+        updateRecording(recording);
+    }
+
+    public void updateNotes(Recording recording, String notes) {
+        recording.setNotes(notes);
+        updateRecording(recording);
+    }
+
     public void insertRecording(Recording recording) {
-        Executors.newSingleThreadExecutor().execute(() -> {
-            recordingDao.insert(recording);
-        });
+        Executors.newSingleThreadExecutor().execute(() -> dao.insert(recording));
     }
 
     public void updateRecording(Recording recording) {
-        Executors.newSingleThreadExecutor().execute(() -> {
-            recordingDao.update(recording);
-        });
+        Executors.newSingleThreadExecutor().execute(() -> dao.update(recording));
     }
 
     public void deleteRecording(Recording recording) {
         Executors.newSingleThreadExecutor().execute(() -> {
-            // Delete the file first
             File file = new File(recording.getFilePath());
-            if (file.exists()) {
-                file.delete();
-            }
-            
-            // Then delete the database entry
-            recordingDao.delete(recording);
+            if (file.exists()) file.delete();
+            dao.delete(recording);
         });
+    }
+
+    public void incrementPlayCount(long recordingId) {
+        Executors.newSingleThreadExecutor().execute(() -> dao.incrementPlayCount(recordingId));
+    }
+
+    public LiveData<Recording> getRecordingById(long id) {
+        return dao.getRecordingByIdLive(id);
     }
 }

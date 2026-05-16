@@ -3,6 +3,7 @@ package com.callrecorder.app.activities;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.widget.Toast;
@@ -28,135 +29,124 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     private static final int PERMISSIONS_REQUEST_CODE = 100;
-    private static final String[] REQUIRED_PERMISSIONS = {
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.PROCESS_OUTGOING_CALLS,
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-    };
 
-    private RecordingsViewModel viewModel;
+    private static final List<String> REQUIRED_PERMISSIONS = new ArrayList<>();
+
+    static {
+        REQUIRED_PERMISSIONS.add(Manifest.permission.RECORD_AUDIO);
+        REQUIRED_PERMISSIONS.add(Manifest.permission.READ_PHONE_STATE);
+        REQUIRED_PERMISSIONS.add(Manifest.permission.READ_CALL_LOG);
+        REQUIRED_PERMISSIONS.add(Manifest.permission.READ_CONTACTS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            REQUIRED_PERMISSIONS.add(Manifest.permission.READ_MEDIA_AUDIO);
+            REQUIRED_PERMISSIONS.add(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            REQUIRED_PERMISSIONS.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            REQUIRED_PERMISSIONS.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+    }
+
     private BottomNavigationView bottomNavigationView;
+    private Fragment currentFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Initialize ViewModel
-        viewModel = new ViewModelProvider(this).get(RecordingsViewModel.class);
+        new ViewModelProvider(this).get(RecordingsViewModel.class);
 
-        // Setup bottom navigation
         bottomNavigationView = findViewById(R.id.bottom_navigation);
         bottomNavigationView.setOnNavigationItemSelectedListener(navListener);
 
-        // Check and request permissions
         if (!hasRequiredPermissions()) {
-            requestPermissions();
+            requestMissingPermissions();
         } else {
-            // Start the service if permissions are granted
             startCallRecorderService();
         }
 
-        // Load default fragment
         if (savedInstanceState == null) {
             bottomNavigationView.setSelectedItemId(R.id.nav_recordings);
         }
     }
 
-    private BottomNavigationView.OnNavigationItemSelectedListener navListener =
-            new BottomNavigationView.OnNavigationItemSelectedListener() {
-                @Override
-                public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-                    Fragment selectedFragment = null;
+    private final BottomNavigationView.OnNavigationItemSelectedListener navListener =
+            item -> {
+                Fragment selected = null;
+                int id = item.getItemId();
+                if (id == R.id.nav_recordings) selected = new RecordingsFragment();
+                else if (id == R.id.nav_contacts) selected = new ContactsFragment();
+                else if (id == R.id.nav_settings) selected = new SettingsFragment();
 
-                    switch (item.getItemId()) {
-                        case R.id.nav_recordings:
-                            selectedFragment = new RecordingsFragment();
-                            break;
-                        case R.id.nav_contacts:
-                            selectedFragment = new ContactsFragment();
-                            break;
-                        case R.id.nav_settings:
-                            selectedFragment = new SettingsFragment();
-                            break;
-                    }
-
-                    if (selectedFragment != null) {
-                        getSupportFragmentManager().beginTransaction()
-                                .replace(R.id.fragment_container, selectedFragment)
-                                .commit();
-                        return true;
-                    }
-                    return false;
+                if (selected != null) {
+                    currentFragment = selected;
+                    getSupportFragmentManager().beginTransaction()
+                            .replace(R.id.fragment_container, selected)
+                            .commit();
+                    return true;
                 }
+                return false;
             };
 
     private boolean hasRequiredPermissions() {
-        for (String permission : REQUIRED_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+        for (String p : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED)
                 return false;
-            }
         }
         return true;
     }
 
-    private void requestPermissions() {
-        List<String> permissionsToRequest = new ArrayList<>();
-        
-        for (String permission : REQUIRED_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(permission);
-            }
+    private void requestMissingPermissions() {
+        List<String> missing = new ArrayList<>();
+        for (String p : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED)
+                missing.add(p);
         }
-        
-        if (!permissionsToRequest.isEmpty()) {
-            ActivityCompat.requestPermissions(
-                    this,
-                    permissionsToRequest.toArray(new String[0]),
-                    PERMISSIONS_REQUEST_CODE
-            );
+        if (!missing.isEmpty()) {
+            ActivityCompat.requestPermissions(this,
+                    missing.toArray(new String[0]),
+                    PERMISSIONS_REQUEST_CODE);
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        
         if (requestCode == PERMISSIONS_REQUEST_CODE) {
-            boolean allGranted = true;
-            
-            for (int result : grantResults) {
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    allGranted = false;
-                    break;
+            boolean coreGranted = true;
+            for (int i = 0; i < permissions.length; i++) {
+                if ((permissions[i].equals(Manifest.permission.RECORD_AUDIO)
+                        || permissions[i].equals(Manifest.permission.READ_PHONE_STATE))
+                        && grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    coreGranted = false;
                 }
             }
-            
-            if (allGranted) {
-                // All permissions granted, start service
+            if (coreGranted) {
                 startCallRecorderService();
             } else {
-                // Some permissions denied, show explanation
-                showPermissionsExplanationDialog();
+                showPermissionsDialog();
             }
         }
     }
 
-    private void showPermissionsExplanationDialog() {
+    private void showPermissionsDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("الأذونات مطلوبة")
-                .setMessage("يحتاج تطبيق تسجيل المكالمات إلى جميع الأذونات المطلوبة للعمل بشكل صحيح. يرجى منح الأذونات للاستمرار.")
-                .setPositiveButton("طلب الأذونات مرة أخرى", (dialog, which) -> requestPermissions())
-                .setNegativeButton("إلغاء", (dialog, which) -> Toast.makeText(MainActivity.this, "لن يعمل التطبيق بشكل صحيح بدون الأذونات المطلوبة", Toast.LENGTH_LONG).show())
+                .setMessage("يحتاج التطبيق إلى إذن تسجيل الصوت وحالة الهاتف للعمل بشكل صحيح.")
+                .setPositiveButton("منح الأذونات", (d, w) -> requestMissingPermissions())
+                .setNegativeButton("إلغاء", (d, w) ->
+                        Toast.makeText(this, "لن يعمل التطبيق بدون الأذونات المطلوبة", Toast.LENGTH_LONG).show())
                 .setCancelable(false)
                 .show();
     }
 
     private void startCallRecorderService() {
-        Intent serviceIntent = new Intent(this, CallRecorderService.class);
-        startService(serviceIntent);
+        Intent intent = new Intent(this, CallRecorderService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
     }
 }

@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/windowBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingBottom="24dp">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="الإعدادات"
+            app:elevation="0dp" />
+
+        <!-- Recording Settings Group -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="إعدادات التسجيل" android:textSize="13sp" android:textColor="?attr/colorPrimary"
+            android:layout_marginHorizontal="16dp" android:layout_marginTop="8dp" android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            app:cardCornerRadius="12dp" app:cardElevation="1dp">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Auto Record -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="تسجيل تلقائي" android:textSize="15sp" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="تسجيل جميع المكالمات تلقائياً" android:textSize="12sp" android:alpha="0.6" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_auto_record"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Quality -->
+                <LinearLayout android:id="@+id/row_quality" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="جودة التسجيل" android:textSize="15sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/tv_quality_value" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:text="عالية" android:textColor="?attr/colorPrimary" android:textSize="13sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Format -->
+                <LinearLayout android:id="@+id/row_format" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="صيغة الملف" android:textSize="15sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/tv_format_value" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:text="MP4" android:textColor="?attr/colorPrimary" android:textSize="13sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Skip short calls -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="تجاهل المكالمات القصيرة" android:textSize="15sp" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="حذف تسجيلات المكالمات القصيرة جداً" android:textSize="12sp" android:alpha="0.6" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_skip_short"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Min duration -->
+                <LinearLayout android:id="@+id/row_min_duration" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="الحد الأدنى للمدة" android:textSize="15sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/tv_min_duration_value" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:text="5 ثانية" android:textColor="?attr/colorPrimary" android:textSize="13sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Speaker -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="التسجيل عبر السماعة" android:textSize="15sp" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="تشغيل السماعة تلقائياً للتسجيل" android:textSize="12sp" android:alpha="0.6" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_speaker"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Storage Group -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="التخزين" android:textSize="13sp" android:textColor="?attr/colorPrimary"
+            android:layout_marginHorizontal="16dp" android:layout_marginTop="16dp" android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            app:cardCornerRadius="12dp" app:cardElevation="1dp">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:padding="16dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="مسار الحفظ" android:textSize="14sp" />
+                    <TextView android:id="@+id/tv_storage_path" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:text="/storage/Music/CallRecordings"
+                        android:textSize="12sp" android:alpha="0.6" android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Auto delete -->
+                <LinearLayout android:id="@+id/row_auto_delete" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="الحذف التلقائي" android:textSize="15sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/tv_auto_delete_value" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:text="معطّل" android:textColor="?attr/colorPrimary" android:textSize="13sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Display & Notifications Group -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="العرض والإشعارات" android:textSize="13sp" android:textColor="?attr/colorPrimary"
+            android:layout_marginHorizontal="16dp" android:layout_marginTop="16dp" android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            app:cardCornerRadius="12dp" app:cardElevation="1dp">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Theme -->
+                <LinearLayout android:id="@+id/row_theme" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="مظهر التطبيق" android:textSize="15sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/tv_theme_value" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:text="تلقائي" android:textColor="?attr/colorPrimary" android:textSize="13sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Waveform -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="عرض موجة الصوت" android:textSize="15sp" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_waveform"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Notification -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="إشعارات التسجيل" android:textSize="15sp" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_notification"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Vibration -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="الاهتزاز" android:textSize="15sp" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_vibration"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Security Group -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="الأمان والخصوصية" android:textSize="13sp" android:textColor="?attr/colorPrimary"
+            android:layout_marginHorizontal="16dp" android:layout_marginTop="16dp" android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            app:cardCornerRadius="12dp" app:cardElevation="1dp">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Biometric -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+                    android:orientation="horizontal" android:paddingHorizontal="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="قفل بالبصمة" android:textSize="15sp" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="حماية التسجيلات ببصمة الإصبع" android:textSize="12sp" android:alpha="0.6" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switch_biometric"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- About Group -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="عن التطبيق" android:textSize="13sp" android:textColor="?attr/colorPrimary"
+            android:layout_marginHorizontal="16dp" android:layout_marginTop="16dp" android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            app:cardCornerRadius="12dp" app:cardElevation="1dp">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Rate -->
+                <LinearLayout android:id="@+id/row_rate" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="قيّم التطبيق ⭐" android:textSize="15sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Share App -->
+                <LinearLayout android:id="@+id/row_share_app" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="شارك التطبيق" android:textSize="15sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <!-- Reset -->
+                <LinearLayout android:id="@+id/row_reset" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="إعادة الإعدادات الافتراضية" android:textSize="15sp" android:textColor="#F44336" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <TextView android:id="@+id/tv_app_version" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:padding="16dp" android:gravity="center"
+                    android:text="الإصدار 2.0" android:textSize="13sp" android:alpha="0.5" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
