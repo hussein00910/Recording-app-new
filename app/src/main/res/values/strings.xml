@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">مسجّل المكالمات</string>
+    <string name="nav_recordings">التسجيلات</string>
+    <string name="nav_contacts">جهات الاتصال</string>
+    <string name="nav_settings">الإعدادات</string>
+    <string name="action_search">بحث</string>
+    <string name="action_filter">تصفية</string>
+    <string name="action_share">مشاركة</string>
+    <string name="action_delete">حذف</string>
+    <string name="empty_recordings">لا توجد تسجيلات</string>
+    <string name="delete_confirm">هل أنت متأكد من الحذف؟</string>
+    <string name="delete">حذف</string>
+    <string name="cancel">إلغاء</string>
+    <string name="recording_saved">تم حفظ التسجيل</string>
+    <string name="recording_deleted">تم الحذف</string>
+    <string name="undo">تراجع</string>
+    <string name="play">تشغيل</string>
+    <string name="pause">إيقاف مؤقت</string>
+    <string name="stop">إيقاف</string>
+    <string name="rewind_10">رجوع 10 ثوانٍ</string>
+    <string name="forward_10">تقديم 10 ثوانٍ</string>
+    <string name="notes">ملاحظات</string>
+    <string name="save_notes">حفظ الملاحظات</string>
+    <string name="notes_saved">تم حفظ الملاحظات</string>
+    <string name="share_app">مشاركة التطبيق</string>
+    <string name="rate_app">قيّم التطبيق</string>
+    <string name="settings_reset">إعادة الإعدادات الافتراضية</string>
+    <string name="settings_reset_confirm">إعادة الضبط</string>
+    <string name="settings_reset_message">هل تريد إعادة جميع الإعدادات إلى الافتراضي؟</string>
+    <string name="biometric_title">تأكيد البصمة</string>
+    <string name="biometric_subtitle">قم بالمصادقة لتفعيل القفل</string>
+    <string name="biometric_negative">إلغاء</string>
+    <string name="unknown_number">رقم غير معروف</string>
+    <string name="incoming_call">مكالمة واردة</string>
+    <string name="outgoing_call">مكالمة صادرة</string>
+    <string name="recording_service_running">تطبيق تسجيل المكالمات يعمل</string>
+    <string name="recording_in_progress">جاري تسجيل المكالمة</string>
+    <string name="recording_complete">تم حفظ التسجيل</string>
+    <string name="stop_recording">إيقاف التسجيل</string>
+    <string name="permissions_title">الأذونات مطلوبة</string>
+    <string name="permissions_message">يحتاج التطبيق إلى أذونات تسجيل الصوت وحالة الهاتف للعمل بشكل صحيح.</string>
+    <string name="grant_permissions">منح الأذونات</string>
+    <string name="file_provider_authority" translatable="false">com.callrecorder.app.provider</string>
+</resources>

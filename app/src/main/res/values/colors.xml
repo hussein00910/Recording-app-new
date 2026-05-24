@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+
+    <color name="blue_100">#BBDEFB</color>
+    <color name="blue_600">#1E88E5</color>
+    <color name="blue_900">#0D47A1</color>
+
+    <color name="teal_500">#009688</color>
+    <color name="amber_600">#FFB300</color>
+
+    <color name="green_500">#4CAF50</color>
+    <color name="red_500">#F44336</color>
+
+    <color name="incoming_color">#4CAF50</color>
+    <color name="outgoing_color">#2196F3</color>
+    <color name="missed_color">#F44336</color>
+
+    <color name="surface_variant">#F5F5F5</color>
+    <color name="on_surface_variant">#757575</color>
+</resources>

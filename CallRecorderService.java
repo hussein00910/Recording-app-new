@@ -1,7 +1,7 @@
 package com.callrecorder.app.services;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -10,8 +10,8 @@ import android.content.Intent;
 import android.media.AudioManager;
 import android.media.MediaRecorder;
 import android.os.Build;
-import android.os.Environment;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -35,45 +35,52 @@ import java.util.concurrent.Executors;
 
 public class CallRecorderService extends Service {
     private static final String TAG = "CallRecorderService";
-    private static final int NOTIFICATION_ID = 1001;
-    private static final String CHANNEL_ID = "call_recorder_channel";
+    private static final int NOTIFICATION_ID_SERVICE = 1001;
+    private static final int NOTIFICATION_ID_RECORDING = 1002;
+    private static final int NOTIFICATION_ID_COMPLETE = 1003;
+
+    public static final String ACTION_STOP_RECORDING = "com.callrecorder.app.STOP_RECORDING";
 
     private MediaRecorder mediaRecorder;
     private boolean isRecording = false;
     private String outputFile;
     private long startTime;
     private String phoneNumber;
-    private int callType; // 1 for incoming, 2 for outgoing
+    private int callType;
     private PhoneStateListener phoneStateListener;
     private TelephonyManager telephonyManager;
     private SettingsManager settingsManager;
     private AppDatabase database;
+    private PowerManager.WakeLock wakeLock;
+    private AudioManager audioManager;
 
     @Override
     public void onCreate() {
         super.onCreate();
         settingsManager = CallRecorderApp.getSettingsManager();
         database = CallRecorderApp.getDatabase();
-        createNotificationChannel();
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        acquireWakeLock();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Extract phone number and call type from intent if available
+        if (intent != null && ACTION_STOP_RECORDING.equals(intent.getAction())) {
+            if (isRecording) stopRecording();
+            return START_STICKY;
+        }
+
         if (intent != null) {
             phoneNumber = intent.getStringExtra("phone_number");
             callType = intent.getIntExtra("call_type", 0);
         }
 
-        // Start foreground service with notification
-        startForeground(NOTIFICATION_ID, createNotification("تطبيق تسجيل المكالمات قيد التشغيل"));
-
-        // Setup phone state listener
+        startForeground(NOTIFICATION_ID_SERVICE, buildServiceNotification("تطبيق تسجيل المكالمات يعمل"));
         setupPhoneStateListener();
-
         return START_STICKY;
     }
 
+    @SuppressLint("MissingPermission")
     private void setupPhoneStateListener() {
         telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
         phoneStateListener = new PhoneStateListener() {
@@ -81,39 +88,29 @@ public class CallRecorderService extends Service {
             public void onCallStateChanged(int state, String incomingNumber) {
                 switch (state) {
                     case TelephonyManager.CALL_STATE_IDLE:
-                        // Call ended, stop recording
-                        if (isRecording) {
-                            stopRecording();
-                        }
+                        if (isRecording) stopRecording();
+                        phoneNumber = null;
+                        callType = 0;
                         break;
+
                     case TelephonyManager.CALL_STATE_OFFHOOK:
-                        // Call started, begin recording
-                        if (!isRecording) {
-                            if (phoneNumber == null) {
-                                phoneNumber = incomingNumber;
-                            }
+                        if (!isRecording && settingsManager.isAutoRecordEnabled()) {
+                            if (phoneNumber == null) phoneNumber = incomingNumber;
                             if (callType == 0) {
-                                // If call type wasn't set, try to determine it
-                                // This is a simplification, might not be accurate in all cases
                                 callType = (incomingNumber != null && !incomingNumber.isEmpty()) ? 1 : 2;
                             }
                             startRecording();
                         }
                         break;
+
                     case TelephonyManager.CALL_STATE_RINGING:
-                        // Phone is ringing, prepare for recording
-                        if (phoneNumber == null) {
-                            phoneNumber = incomingNumber;
-                        }
-                        if (callType == 0) {
-                            callType = 1; // Incoming call
-                        }
+                        if (phoneNumber == null) phoneNumber = incomingNumber;
+                        callType = 1;
                         break;
                 }
             }
         };
 
-        // Register the phone state listener
         if (telephonyManager != null) {
             telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE);
         }
@@ -123,101 +120,99 @@ public class CallRecorderService extends Service {
         if (isRecording) return;
 
         try {
-            // Create output directory if it doesn't exist
             File directory = new File(settingsManager.getStoragePath());
-            if (!directory.exists()) {
-                directory.mkdirs();
-            }
+            if (!directory.exists()) directory.mkdirs();
 
-            // Create output file
-            outputFile = createOutputFile();
-
-            // Configure MediaRecorder based on quality settings
+            outputFile = buildOutputFilePath();
             mediaRecorder = new MediaRecorder();
-            
-            // Try to use VOICE_COMMUNICATION source first (better for calls)
+
+            boolean usedVoiceComm = false;
             try {
                 mediaRecorder.setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
+                usedVoiceComm = true;
             } catch (Exception e) {
-                // Fallback to MIC if VOICE_COMMUNICATION is not available
                 mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-                
-                // Enable speaker if using microphone
-                AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-                audioManager.setSpeakerphoneOn(true);
+                if (settingsManager.isRecordOnSpeakerEnabled()) {
+                    audioManager.setSpeakerphoneOn(true);
+                }
             }
 
-            // Set output format and encoder based on quality setting
-            int quality = settingsManager.getRecordingQuality();
-            switch (quality) {
-                case SettingsManager.QUALITY_HIGH:
-                    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS);
-                    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                    mediaRecorder.setAudioSamplingRate(44100);
-                    mediaRecorder.setAudioEncodingBitRate(192000);
-                    break;
-                case SettingsManager.QUALITY_LOW:
-                    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-                    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-                    break;
-                case SettingsManager.QUALITY_MEDIUM:
-                default:
-                    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                    mediaRecorder.setAudioSamplingRate(22050);
-                    mediaRecorder.setAudioEncodingBitRate(96000);
-                    break;
-            }
-
+            applyQualitySettings();
             mediaRecorder.setOutputFile(outputFile);
             mediaRecorder.prepare();
             mediaRecorder.start();
-            
+
             startTime = System.currentTimeMillis();
             isRecording = true;
-            
-            // Update notification
-            updateNotification("جاري تسجيل المكالمة...");
-            
+
+            String contactDisplay = (phoneNumber != null) ?
+                    ContactUtils.getContactName(this, phoneNumber) : null;
+            if (contactDisplay == null || contactDisplay.isEmpty()) contactDisplay = phoneNumber;
+
+            showRecordingNotification(contactDisplay != null ? contactDisplay : "مكالمة");
+
         } catch (IOException e) {
+            Log.e(TAG, "Primary recording failed, trying fallback", e);
+            startFallbackRecording();
+        } catch (Exception e) {
             Log.e(TAG, "Error starting recording", e);
-            // Try alternative recording method
-            startAlternativeRecording();
         }
     }
 
-    private void startAlternativeRecording() {
+    private void startFallbackRecording() {
         try {
-            // Enable speaker
-            AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            audioManager.setSpeakerphoneOn(true);
-            
-            // Create output file
-            if (outputFile == null) {
-                outputFile = createOutputFile();
+            if (outputFile == null) outputFile = buildOutputFilePath();
+
+            if (mediaRecorder != null) {
+                try { mediaRecorder.release(); } catch (Exception ignored) {}
             }
-            
-            // Configure MediaRecorder with microphone source
+
             mediaRecorder = new MediaRecorder();
             mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-            
-            // Use lower quality settings for alternative method
-            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+            audioManager.setSpeakerphoneOn(true);
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            mediaRecorder.setAudioSamplingRate(22050);
+            mediaRecorder.setAudioEncodingBitRate(96000);
             mediaRecorder.setOutputFile(outputFile);
-            
             mediaRecorder.prepare();
             mediaRecorder.start();
-            
+
             startTime = System.currentTimeMillis();
             isRecording = true;
-            
-            // Update notification
-            updateNotification("جاري تسجيل المكالمة (وضع بديل)...");
-            
+
+            showRecordingNotification("مكالمة");
+            Log.d(TAG, "Fallback recording started");
+
         } catch (IOException e) {
-            Log.e(TAG, "Error starting alternative recording", e);
+            Log.e(TAG, "Fallback recording also failed", e);
             isRecording = false;
+        }
+    }
+
+    private void applyQualitySettings() {
+        int quality = settingsManager.getRecordingQuality();
+        switch (quality) {
+            case SettingsManager.QUALITY_HIGH:
+                mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                mediaRecorder.setAudioSamplingRate(44100);
+                mediaRecorder.setAudioEncodingBitRate(256000);
+                mediaRecorder.setAudioChannels(2);
+                break;
+            case SettingsManager.QUALITY_LOW:
+                mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+                mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+                mediaRecorder.setAudioSamplingRate(8000);
+                mediaRecorder.setAudioEncodingBitRate(12200);
+                break;
+            case SettingsManager.QUALITY_MEDIUM:
+            default:
+                mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                mediaRecorder.setAudioSamplingRate(22050);
+                mediaRecorder.setAudioEncodingBitRate(128000);
+                break;
         }
     }
 
@@ -229,139 +224,167 @@ public class CallRecorderService extends Service {
             mediaRecorder.reset();
             mediaRecorder.release();
             mediaRecorder = null;
-            
-            // Calculate duration
+
             long duration = System.currentTimeMillis() - startTime;
-            
-            // Turn off speaker if it was enabled
-            AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            long durationSeconds = duration / 1000;
+
             audioManager.setSpeakerphoneOn(false);
-            
-            // Save recording info to database
-            saveRecordingToDatabase(duration);
-            
+
+            int minDuration = settingsManager.getMinCallDuration();
+            if (settingsManager.isSkipShortCallsEnabled() && durationSeconds < minDuration) {
+                File f = new File(outputFile);
+                if (f.exists()) f.delete();
+                Log.d(TAG, "Call too short (" + durationSeconds + "s), discarding recording");
+            } else {
+                saveRecordingToDatabase(duration);
+                showCompletedNotification(duration);
+            }
+
             isRecording = false;
-            updateNotification("تم حفظ التسجيل");
-            
+            cancelRecordingNotification();
+            restoreServiceNotification();
+
         } catch (Exception e) {
             Log.e(TAG, "Error stopping recording", e);
+            isRecording = false;
         }
     }
 
-    private String createOutputFile() {
+    private String buildOutputFilePath() {
         String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-        String fileName;
-        
+        String name;
+
         if (phoneNumber != null && !phoneNumber.isEmpty()) {
-            // Use contact name if available
-            String contactName = ContactUtils.getContactName(this, phoneNumber);
-            if (contactName != null && !contactName.isEmpty()) {
-                fileName = contactName + "_" + timestamp;
-            } else {
-                fileName = phoneNumber + "_" + timestamp;
-            }
+            String contact = ContactUtils.getContactName(this, phoneNumber);
+            name = (contact != null && !contact.isEmpty()) ? contact : phoneNumber;
+            name = name.replaceAll("[^a-zA-Z0-9؀-ۿ_\\-]", "_");
         } else {
-            fileName = "Unknown_" + timestamp;
+            name = "Unknown";
         }
-        
-        // Add call type indicator
-        fileName += (callType == 1) ? "_incoming" : "_outgoing";
-        
-        // Get file extension based on quality setting
-        String extension;
-        int quality = settingsManager.getRecordingQuality();
-        switch (quality) {
-            case SettingsManager.QUALITY_HIGH:
-                extension = ".aac";
-                break;
-            case SettingsManager.QUALITY_LOW:
-                extension = ".3gp";
-                break;
-            case SettingsManager.QUALITY_MEDIUM:
-            default:
-                extension = ".mp4";
-                break;
+
+        name += "_" + timestamp;
+        name += (callType == 1) ? "_incoming" : "_outgoing";
+
+        String ext;
+        switch (settingsManager.getRecordingQuality()) {
+            case SettingsManager.QUALITY_LOW: ext = ".3gp"; break;
+            default: ext = ".mp4"; break;
         }
-        
-        return settingsManager.getStoragePath() + File.separator + fileName + extension;
+
+        return settingsManager.getStoragePath() + File.separator + name + ext;
     }
 
     private void saveRecordingToDatabase(final long duration) {
-        // Get contact name if available
         String contactName = null;
         if (phoneNumber != null && !phoneNumber.isEmpty()) {
             contactName = ContactUtils.getContactName(this, phoneNumber);
         }
-        
-        // Create recording object
+
+        File file = new File(outputFile);
+        long fileSize = file.exists() ? file.length() : 0;
+
         final Recording recording = new Recording(
-                0, // ID will be auto-generated
-                phoneNumber,
-                contactName,
-                callType,
-                outputFile,
-                duration,
-                System.currentTimeMillis(),
-                false,
-                null
-        );
-        
-        // Insert recording into database
-        Executors.newSingleThreadExecutor().execute(new Runnable() {
-            @Override
-            public void run() {
-                database.recordingDao().insert(recording);
-            }
-        });
+                0, phoneNumber, contactName, callType,
+                outputFile, duration, System.currentTimeMillis(), false, null);
+        recording.setFileSize(fileSize);
+
+        Executors.newSingleThreadExecutor().execute(() ->
+                database.recordingDao().insert(recording));
     }
 
-    private Notification createNotification(String text) {
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                notificationIntent,
-                PendingIntent.FLAG_IMMUTABLE
-        );
+    // ── Notifications ──────────────────────────────────────────────────────────
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+    private Notification buildServiceNotification(String text) {
+        PendingIntent pi = PendingIntent.getActivity(this, 0,
+                new Intent(this, MainActivity.class),
+                PendingIntent.FLAG_IMMUTABLE);
+
+        return new NotificationCompat.Builder(this, CallRecorderApp.CHANNEL_ID_SERVICE)
                 .setContentTitle("تسجيل المكالمات")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentIntent(pendingIntent)
+                .setContentIntent(pi)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build();
     }
 
-    private void updateNotification(String text) {
-        NotificationManager notificationManager = 
-                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.notify(NOTIFICATION_ID, createNotification(text));
+    private void showRecordingNotification(String callerName) {
+        Intent stopIntent = new Intent(this, CallRecorderService.class);
+        stopIntent.setAction(ACTION_STOP_RECORDING);
+        PendingIntent stopPi = PendingIntent.getService(this, 0, stopIntent,
+                PendingIntent.FLAG_IMMUTABLE);
+
+        PendingIntent openPi = PendingIntent.getActivity(this, 0,
+                new Intent(this, MainActivity.class),
+                PendingIntent.FLAG_IMMUTABLE);
+
+        Notification n = new NotificationCompat.Builder(this, CallRecorderApp.CHANNEL_ID_RECORDING)
+                .setContentTitle("جاري تسجيل المكالمة")
+                .setContentText(callerName)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentIntent(openPi)
+                .addAction(R.drawable.ic_stop, "إيقاف التسجيل", stopPi)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build();
+
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.notify(NOTIFICATION_ID_RECORDING, n);
     }
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "خدمة تسجيل المكالمات",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("إشعارات خدمة تسجيل المكالمات");
-            
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
+    private void cancelRecordingNotification() {
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.cancel(NOTIFICATION_ID_RECORDING);
     }
+
+    private void restoreServiceNotification() {
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.notify(NOTIFICATION_ID_SERVICE, buildServiceNotification("جاهز للتسجيل"));
+    }
+
+    private void showCompletedNotification(long duration) {
+        long secs = duration / 1000;
+        String durationStr = String.format(Locale.getDefault(), "%d:%02d", secs / 60, secs % 60);
+
+        PendingIntent openPi = PendingIntent.getActivity(this, 0,
+                new Intent(this, MainActivity.class),
+                PendingIntent.FLAG_IMMUTABLE);
+
+        Notification n = new NotificationCompat.Builder(this, CallRecorderApp.CHANNEL_ID_COMPLETE)
+                .setContentTitle("تم حفظ التسجيل")
+                .setContentText("مدة المكالمة: " + durationStr)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentIntent(openPi)
+                .setAutoCancel(true)
+                .build();
+
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.notify(NOTIFICATION_ID_COMPLETE, n);
+    }
+
+    // ── WakeLock ───────────────────────────────────────────────────────────────
+
+    @SuppressLint("WakelockTimeout")
+    private void acquireWakeLock() {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CallRecorder:WakeLock");
+        wakeLock.acquire();
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+    }
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     @Override
     public void onDestroy() {
-        if (isRecording) {
-            stopRecording();
-        }
-        
+        if (isRecording) stopRecording();
         if (telephonyManager != null && phoneStateListener != null) {
             telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE);
         }
-        
+        releaseWakeLock();
         super.onDestroy();
     }
 

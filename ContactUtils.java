@@ -6,69 +6,59 @@ import android.net.Uri;
 import android.provider.ContactsContract;
 
 public class ContactUtils {
-    
-    /**
-     * Get contact name from phone number
-     * @param context Application context
-     * @param phoneNumber Phone number to lookup
-     * @return Contact name if found, null otherwise
-     */
+
     public static String getContactName(Context context, String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.isEmpty()) {
-            return null;
-        }
-        
-        String contactName = null;
-        
-        // Query the contacts database
-        Uri uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber));
-        String[] projection = new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME};
-        
-        Cursor cursor = null;
+        if (phoneNumber == null || phoneNumber.isEmpty()) return null;
         try {
-            cursor = context.getContentResolver().query(uri, projection, null, null, null);
-            if (cursor != null && cursor.moveToFirst()) {
-                contactName = cursor.getString(cursor.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
+            Uri uri = Uri.withAppendedPath(
+                    ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                    Uri.encode(phoneNumber));
+            Cursor cursor = context.getContentResolver().query(
+                    uri,
+                    new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME},
+                    null, null, null);
             if (cursor != null) {
-                cursor.close();
+                try {
+                    if (cursor.moveToFirst()) return cursor.getString(0);
+                } finally {
+                    cursor.close();
+                }
             }
-        }
-        
-        return contactName;
+        } catch (Exception ignored) {}
+        return null;
     }
-    
-    /**
-     * Format phone number for display
-     * @param phoneNumber Raw phone number
-     * @return Formatted phone number
-     */
+
     public static String formatPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.isEmpty()) {
-            return "";
+        if (phoneNumber == null || phoneNumber.isEmpty()) return "";
+        String digits = phoneNumber.replaceAll("[^0-9+]", "");
+        if (digits.startsWith("+")) return digits;
+        if (digits.length() == 10) {
+            return digits.substring(0, 3) + "-" + digits.substring(3, 6) + "-" + digits.substring(6);
         }
-        
-        // Remove non-digit characters
-        String digitsOnly = phoneNumber.replaceAll("\\D", "");
-        
-        // Format based on length
-        if (digitsOnly.length() == 10) {
-            // Format as XXX-XXX-XXXX
-            return digitsOnly.substring(0, 3) + "-" + 
-                   digitsOnly.substring(3, 6) + "-" + 
-                   digitsOnly.substring(6);
-        } else if (digitsOnly.length() > 10) {
-            // Format as +X-XXX-XXX-XXXX for international numbers
-            return "+" + digitsOnly.substring(0, digitsOnly.length() - 10) + "-" +
-                   digitsOnly.substring(digitsOnly.length() - 10, digitsOnly.length() - 7) + "-" +
-                   digitsOnly.substring(digitsOnly.length() - 7, digitsOnly.length() - 4) + "-" +
-                   digitsOnly.substring(digitsOnly.length() - 4);
+        if (digits.length() == 11 && digits.startsWith("0")) {
+            return digits.substring(0, 4) + "-" + digits.substring(4, 7) + "-" + digits.substring(7);
         }
-        
-        // Return as is if can't format
         return phoneNumber;
+    }
+
+    public static String getContactPhotoUri(Context context, String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isEmpty()) return null;
+        try {
+            Uri uri = Uri.withAppendedPath(
+                    ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                    Uri.encode(phoneNumber));
+            Cursor cursor = context.getContentResolver().query(
+                    uri,
+                    new String[]{ContactsContract.PhoneLookup.PHOTO_URI},
+                    null, null, null);
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) return cursor.getString(0);
+                } finally {
+                    cursor.close();
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 }
