@@ -21,7 +21,16 @@ import androidx.fragment.app.Fragment;
 import com.callrecorder.app.BuildConfig;
 import com.callrecorder.app.CallRecorderApp;
 import com.callrecorder.app.R;
+import com.callrecorder.app.utils.DiagLog;
 import com.callrecorder.app.utils.SettingsManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.media.MediaRecorder;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import java.io.File;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 
@@ -142,6 +151,71 @@ public class SettingsFragment extends Fragment {
         requireView().findViewById(R.id.row_reset).setOnClickListener(v -> showResetDialog());
         requireView().findViewById(R.id.row_rate).setOnClickListener(v -> openPlayStore());
         requireView().findViewById(R.id.row_share_app).setOnClickListener(v -> shareApp());
+        requireView().findViewById(R.id.row_diagnostics).setOnClickListener(v -> showDiagnostics());
+        requireView().findViewById(R.id.row_test_recording).setOnClickListener(v -> runTestRecording());
+    }
+
+    // ── Diagnostics ────────────────────────────────────────────────────────────
+
+    private void showDiagnostics() {
+        Context ctx = requireContext();
+        String log = DiagLog.read(ctx);
+        String header = "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + "), "
+                + Build.MANUFACTURER + " " + Build.MODEL + ", app " + BuildConfig.VERSION_NAME + "\n\n";
+        String text = header + (log.isEmpty() ? "(السجل فارغ: لم تُسجَّل أي أحداث بعد)" : log);
+        new MaterialAlertDialogBuilder(ctx)
+                .setTitle("سجل التشخيص")
+                .setMessage(text)
+                .setPositiveButton("نسخ", (d, w) -> {
+                    ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("diagnostics", text));
+                    Toast.makeText(ctx, "تم النسخ، الصقه في المحادثة", Toast.LENGTH_SHORT).show();
+                })
+                .setNeutralButton("مسح", (d, w) -> {
+                    DiagLog.clear(ctx);
+                    Toast.makeText(ctx, "تم مسح السجل", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    /** Records 3 s from the mic outside a call to check storage + microphone on their own. */
+    private void runTestRecording() {
+        Context ctx = requireContext().getApplicationContext();
+        Toast.makeText(ctx, "جاري اختبار التسجيل لمدة 3 ثوانٍ… تكلّم الآن", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String result;
+            File dir = new File(settings.getDefaultStoragePath());
+            File file = new File(dir, "test_recording.m4a");
+            MediaRecorder r = null;
+            try {
+                if (!dir.isDirectory() && !dir.mkdirs()) throw new IllegalStateException("mkdirs failed: " + dir);
+                r = new MediaRecorder();
+                r.setAudioSource(MediaRecorder.AudioSource.MIC);
+                r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                r.setAudioChannels(1);
+                r.setAudioSamplingRate(44100);
+                r.setAudioEncodingBitRate(128000);
+                r.setOutputFile(file.getAbsolutePath());
+                r.prepare();
+                r.start();
+                Thread.sleep(3000);
+                r.stop();
+                result = "نجح الاختبار ✅ حجم الملف " + file.length() + " بايت";
+            } catch (Exception e) {
+                result = "فشل الاختبار ❌ " + e.getClass().getSimpleName()
+                        + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            } finally {
+                if (r != null) try { r.release(); } catch (Exception ignored) {}
+                //noinspection ResultOfMethodCallIgnored
+                file.delete();
+            }
+            DiagLog.log(ctx, "TestRecording", result);
+            final String msg = result;
+            new Handler(Looper.getMainLooper()).post(() ->
+                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show());
+        }).start();
     }
 
     private void showQualityDialog() {

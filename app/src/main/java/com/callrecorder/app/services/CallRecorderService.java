@@ -17,6 +17,9 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+import android.Manifest;
+import android.content.pm.PackageManager;
 
 import com.callrecorder.app.CallRecorderApp;
 import com.callrecorder.app.R;
@@ -24,6 +27,7 @@ import com.callrecorder.app.activities.MainActivity;
 import com.callrecorder.app.database.AppDatabase;
 import com.callrecorder.app.models.Recording;
 import com.callrecorder.app.utils.ContactUtils;
+import com.callrecorder.app.utils.DiagLog;
 import com.callrecorder.app.utils.SettingsManager;
 
 import java.io.File;
@@ -63,6 +67,22 @@ public class CallRecorderService extends Service {
         database = CallRecorderApp.getDatabase();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         acquireWakeLock();
+        diag("Service created. Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + "), "
+                + Build.MANUFACTURER + " " + Build.MODEL
+                + ", RECORD_AUDIO=" + granted(Manifest.permission.RECORD_AUDIO)
+                + ", READ_PHONE_STATE=" + granted(Manifest.permission.READ_PHONE_STATE)
+                + ", READ_CALL_LOG=" + granted(Manifest.permission.READ_CALL_LOG)
+                + ", autoRecord=" + settingsManager.isAutoRecordEnabled()
+                + ", quality=" + settingsManager.getRecordingQuality()
+                + ", storage=" + settingsManager.getStoragePath());
+    }
+
+    private void diag(String message) {
+        DiagLog.log(this, TAG, message);
+    }
+
+    private boolean granted(String permission) {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
@@ -72,6 +92,8 @@ public class CallRecorderService extends Service {
             return START_STICKY;
         }
 
+        diag("onStartCommand intent=" + (intent == null ? "null(restart)" : intent.getAction()
+                + " type=" + intent.getIntExtra("call_type", 0)));
         if (intent != null) {
             phoneNumber = intent.getStringExtra("phone_number");
             callType = intent.getIntExtra("call_type", 0);
@@ -82,7 +104,7 @@ public class CallRecorderService extends Service {
                 startForeground(NOTIFICATION_ID_SERVICE, buildServiceNotification("جاهز للتسجيل"));
                 inForeground = true;
             } catch (Exception e) {
-                Log.e(TAG, "startForeground failed", e);
+                diag("startForeground FAILED: " + describe(e));
             }
         }
         if (phoneStateListener == null) setupPhoneStateListener();
@@ -95,6 +117,9 @@ public class CallRecorderService extends Service {
         phoneStateListener = new PhoneStateListener() {
             @Override
             public void onCallStateChanged(int state, String incomingNumber) {
+                diag("Call state -> " + (state == TelephonyManager.CALL_STATE_IDLE ? "IDLE"
+                        : state == TelephonyManager.CALL_STATE_OFFHOOK ? "OFFHOOK" : "RINGING")
+                        + ", recording=" + isRecording);
                 switch (state) {
                     case TelephonyManager.CALL_STATE_IDLE:
                         if (isRecording) stopRecording();
@@ -121,7 +146,14 @@ public class CallRecorderService extends Service {
         };
 
         if (telephonyManager != null) {
-            telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE);
+            try {
+                telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE);
+                diag("Call state listener registered");
+            } catch (Exception e) {
+                diag("Call state listener FAILED: " + describe(e));
+            }
+        } else {
+            diag("No TelephonyManager on this device");
         }
     }
 
@@ -159,7 +191,7 @@ public class CallRecorderService extends Service {
                     }
                     startTime = System.currentTimeMillis();
                     isRecording = true;
-                    Log.d(TAG, "Recording started: source=" + source + " rate=" + config[1]
+                    diag("Recording STARTED: source=" + source + " rate=" + config[1]
                             + " bitrate=" + config[2] + " -> " + outputFile);
 
                     String contactDisplay = (phoneNumber != null) ?
@@ -169,7 +201,7 @@ public class CallRecorderService extends Service {
                     return;
                 } catch (Exception e) {
                     // RuntimeException ("start failed") is common here, not only IOException
-                    Log.w(TAG, "source=" + source + " rate=" + config[1] + " failed", e);
+                    diag("Start failed: source=" + source + " rate=" + config[1] + ": " + describe(e));
                     lastError = e;
                     releaseRecorder();
                     new File(outputFile).delete();
@@ -184,7 +216,7 @@ public class CallRecorderService extends Service {
         File dir = new File(settingsManager.getStoragePath());
         if ((dir.isDirectory() || dir.mkdirs()) && dir.canWrite()) return dir;
 
-        Log.w(TAG, "Storage path not writable: " + dir + ", using app folder");
+        diag("Storage path not writable: " + dir + ", using app folder");
         File fallback = new File(settingsManager.getDefaultStoragePath());
         settingsManager.setStoragePath(fallback.getAbsolutePath());
         if ((fallback.isDirectory() || fallback.mkdirs()) && fallback.canWrite()) return fallback;
@@ -268,7 +300,7 @@ public class CallRecorderService extends Service {
             stopped = true;
         } catch (Exception e) {
             // stop() throws if no audio data was captured
-            Log.e(TAG, "Error stopping recording", e);
+            diag("stop() FAILED: " + describe(e));
         }
         releaseRecorder();
         restoreSpeaker();
@@ -276,6 +308,7 @@ public class CallRecorderService extends Service {
         restoreServiceNotification();
 
         File f = new File(outputFile);
+        diag("Recording stopped after " + (duration / 1000) + "s, file size=" + f.length() + " bytes");
         if (!stopped || !f.exists() || f.length() == 0) {
             f.delete();
             reportError("فشل حفظ التسجيل: لم يُلتقط أي صوت");
@@ -285,7 +318,8 @@ public class CallRecorderService extends Service {
         long durationSeconds = duration / 1000;
         if (settingsManager.isSkipShortCallsEnabled() && durationSeconds < settingsManager.getMinCallDuration()) {
             f.delete();
-            Log.d(TAG, "Call too short (" + durationSeconds + "s), discarding recording");
+            diag("Call too short (" + durationSeconds + "s < " + settingsManager.getMinCallDuration()
+                    + "s), recording discarded");
             return;
         }
         saveRecordingToDatabase(duration);
@@ -308,7 +342,7 @@ public class CallRecorderService extends Service {
 
     /** Shows the failure to the user instead of only writing it to logcat. */
     private void reportError(String message) {
-        Log.e(TAG, message);
+        diag("ERROR: " + message);
         Notification n = new NotificationCompat.Builder(this, CallRecorderApp.CHANNEL_ID_COMPLETE)
                 .setContentTitle("لم يتم تسجيل المكالمة")
                 .setContentText(message)
@@ -358,8 +392,14 @@ public class CallRecorderService extends Service {
                 outputFile, duration, System.currentTimeMillis(), false, null);
         recording.setFileSize(fileSize);
 
-        Executors.newSingleThreadExecutor().execute(() ->
-                database.recordingDao().insert(recording));
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                long id = database.recordingDao().insert(recording);
+                diag("Saved to database, id=" + id);
+            } catch (Exception e) {
+                diag("Database insert FAILED: " + describe(e));
+            }
+        });
     }
 
     // ── Notifications ──────────────────────────────────────────────────────────
@@ -450,6 +490,7 @@ public class CallRecorderService extends Service {
 
     @Override
     public void onDestroy() {
+        diag("Service destroyed");
         if (isRecording) stopRecording();
         if (telephonyManager != null && phoneStateListener != null) {
             telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE);
