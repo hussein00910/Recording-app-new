@@ -27,7 +27,6 @@ import com.callrecorder.app.utils.ContactUtils;
 import com.callrecorder.app.utils.SettingsManager;
 
 import java.io.File;
-import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -38,11 +37,13 @@ public class CallRecorderService extends Service {
     private static final int NOTIFICATION_ID_SERVICE = 1001;
     private static final int NOTIFICATION_ID_RECORDING = 1002;
     private static final int NOTIFICATION_ID_COMPLETE = 1003;
+    private static final int NOTIFICATION_ID_ERROR = 1004;
 
     public static final String ACTION_STOP_RECORDING = "com.callrecorder.app.STOP_RECORDING";
 
     private MediaRecorder mediaRecorder;
     private boolean isRecording = false;
+    private boolean inForeground = false;
     private String outputFile;
     private long startTime;
     private String phoneNumber;
@@ -75,8 +76,15 @@ public class CallRecorderService extends Service {
             callType = intent.getIntExtra("call_type", 0);
         }
 
-        startForeground(NOTIFICATION_ID_SERVICE, buildServiceNotification("تطبيق تسجيل المكالمات يعمل"));
-        setupPhoneStateListener();
+        if (!inForeground) {
+            try {
+                startForeground(NOTIFICATION_ID_SERVICE, buildServiceNotification("جاهز للتسجيل"));
+                inForeground = true;
+            } catch (Exception e) {
+                Log.e(TAG, "startForeground failed", e);
+            }
+        }
+        if (phoneStateListener == null) setupPhoneStateListener();
         return START_STICKY;
     }
 
@@ -116,78 +124,66 @@ public class CallRecorderService extends Service {
         }
     }
 
+    /** Audio sources tried in order; devices differ in which one is allowed during a call. */
+    private static final int[] AUDIO_SOURCES = {
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
+    };
+
     private void startRecording() {
         if (isRecording) return;
 
-        try {
-            File directory = new File(settingsManager.getStoragePath());
-            if (!directory.exists()) directory.mkdirs();
+        File directory = resolveStorageDirectory();
+        if (directory == null) {
+            reportError("تعذّر إنشاء مجلد التسجيلات");
+            return;
+        }
+        outputFile = buildOutputFilePath(directory);
 
-            outputFile = buildOutputFilePath();
-            mediaRecorder = new MediaRecorder();
-
-            boolean usedVoiceComm = false;
+        Exception lastError = null;
+        for (int source : AUDIO_SOURCES) {
             try {
-                mediaRecorder.setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
-                usedVoiceComm = true;
-            } catch (Exception e) {
-                mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-                if (settingsManager.isRecordOnSpeakerEnabled()) {
+                mediaRecorder = new MediaRecorder();
+                mediaRecorder.setAudioSource(source);
+                applyQualitySettings();
+                mediaRecorder.setOutputFile(outputFile);
+                mediaRecorder.prepare();
+                mediaRecorder.start();
+
+                if (source == MediaRecorder.AudioSource.MIC && settingsManager.isRecordOnSpeakerEnabled()) {
                     audioManager.setSpeakerphoneOn(true);
                 }
+                startTime = System.currentTimeMillis();
+                isRecording = true;
+                Log.d(TAG, "Recording started with audio source " + source + " -> " + outputFile);
+
+                String contactDisplay = (phoneNumber != null) ?
+                        ContactUtils.getContactName(this, phoneNumber) : null;
+                if (contactDisplay == null || contactDisplay.isEmpty()) contactDisplay = phoneNumber;
+                showRecordingNotification(contactDisplay != null ? contactDisplay : "مكالمة");
+                return;
+            } catch (Exception e) {
+                // RuntimeException ("start failed") is common here, not only IOException
+                Log.w(TAG, "Audio source " + source + " failed", e);
+                lastError = e;
+                releaseRecorder();
+                new File(outputFile).delete();
             }
-
-            applyQualitySettings();
-            mediaRecorder.setOutputFile(outputFile);
-            mediaRecorder.prepare();
-            mediaRecorder.start();
-
-            startTime = System.currentTimeMillis();
-            isRecording = true;
-
-            String contactDisplay = (phoneNumber != null) ?
-                    ContactUtils.getContactName(this, phoneNumber) : null;
-            if (contactDisplay == null || contactDisplay.isEmpty()) contactDisplay = phoneNumber;
-
-            showRecordingNotification(contactDisplay != null ? contactDisplay : "مكالمة");
-
-        } catch (IOException e) {
-            Log.e(TAG, "Primary recording failed, trying fallback", e);
-            startFallbackRecording();
-        } catch (Exception e) {
-            Log.e(TAG, "Error starting recording", e);
         }
+        reportError("تعذّر بدء التسجيل: " + describe(lastError));
     }
 
-    private void startFallbackRecording() {
-        try {
-            if (outputFile == null) outputFile = buildOutputFilePath();
+    /** Uses the configured folder if writable, otherwise the app-specific default. */
+    private File resolveStorageDirectory() {
+        File dir = new File(settingsManager.getStoragePath());
+        if ((dir.isDirectory() || dir.mkdirs()) && dir.canWrite()) return dir;
 
-            if (mediaRecorder != null) {
-                try { mediaRecorder.release(); } catch (Exception ignored) {}
-            }
-
-            mediaRecorder = new MediaRecorder();
-            mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-            audioManager.setSpeakerphoneOn(true);
-            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            mediaRecorder.setAudioSamplingRate(22050);
-            mediaRecorder.setAudioEncodingBitRate(96000);
-            mediaRecorder.setOutputFile(outputFile);
-            mediaRecorder.prepare();
-            mediaRecorder.start();
-
-            startTime = System.currentTimeMillis();
-            isRecording = true;
-
-            showRecordingNotification("مكالمة");
-            Log.d(TAG, "Fallback recording started");
-
-        } catch (IOException e) {
-            Log.e(TAG, "Fallback recording also failed", e);
-            isRecording = false;
-        }
+        Log.w(TAG, "Storage path not writable: " + dir + ", using app folder");
+        File fallback = new File(settingsManager.getDefaultStoragePath());
+        settingsManager.setStoragePath(fallback.getAbsolutePath());
+        if ((fallback.isDirectory() || fallback.mkdirs()) && fallback.canWrite()) return fallback;
+        return null;
     }
 
     private void applyQualitySettings() {
@@ -197,8 +193,9 @@ public class CallRecorderService extends Service {
                 mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
                 mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                 mediaRecorder.setAudioSamplingRate(44100);
-                mediaRecorder.setAudioEncodingBitRate(256000);
-                mediaRecorder.setAudioChannels(2);
+                mediaRecorder.setAudioEncodingBitRate(128000);
+                // Call audio is mono; requesting 2 channels makes start() fail on some devices
+                mediaRecorder.setAudioChannels(1);
                 break;
             case SettingsManager.QUALITY_LOW:
                 mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
@@ -211,46 +208,76 @@ public class CallRecorderService extends Service {
                 mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
                 mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
                 mediaRecorder.setAudioSamplingRate(22050);
-                mediaRecorder.setAudioEncodingBitRate(128000);
+                mediaRecorder.setAudioEncodingBitRate(64000);
+                mediaRecorder.setAudioChannels(1);
                 break;
         }
     }
 
     private void stopRecording() {
         if (!isRecording) return;
+        isRecording = false;
 
+        long duration = System.currentTimeMillis() - startTime;
+        boolean stopped = false;
         try {
             mediaRecorder.stop();
-            mediaRecorder.reset();
-            mediaRecorder.release();
-            mediaRecorder = null;
-
-            long duration = System.currentTimeMillis() - startTime;
-            long durationSeconds = duration / 1000;
-
-            audioManager.setSpeakerphoneOn(false);
-
-            int minDuration = settingsManager.getMinCallDuration();
-            if (settingsManager.isSkipShortCallsEnabled() && durationSeconds < minDuration) {
-                File f = new File(outputFile);
-                if (f.exists()) f.delete();
-                Log.d(TAG, "Call too short (" + durationSeconds + "s), discarding recording");
-            } else {
-                saveRecordingToDatabase(duration);
-                showCompletedNotification(duration);
-            }
-
-            isRecording = false;
-            cancelRecordingNotification();
-            restoreServiceNotification();
-
+            stopped = true;
         } catch (Exception e) {
+            // stop() throws if no audio data was captured
             Log.e(TAG, "Error stopping recording", e);
-            isRecording = false;
+        }
+        releaseRecorder();
+        audioManager.setSpeakerphoneOn(false);
+        cancelRecordingNotification();
+        restoreServiceNotification();
+
+        File f = new File(outputFile);
+        if (!stopped || !f.exists() || f.length() == 0) {
+            f.delete();
+            reportError("فشل حفظ التسجيل: لم يُلتقط أي صوت");
+            return;
+        }
+
+        long durationSeconds = duration / 1000;
+        if (settingsManager.isSkipShortCallsEnabled() && durationSeconds < settingsManager.getMinCallDuration()) {
+            f.delete();
+            Log.d(TAG, "Call too short (" + durationSeconds + "s), discarding recording");
+            return;
+        }
+        saveRecordingToDatabase(duration);
+        showCompletedNotification(duration);
+    }
+
+    private void releaseRecorder() {
+        if (mediaRecorder != null) {
+            try { mediaRecorder.reset(); } catch (Exception ignored) {}
+            try { mediaRecorder.release(); } catch (Exception ignored) {}
+            mediaRecorder = null;
         }
     }
 
-    private String buildOutputFilePath() {
+    private static String describe(Exception e) {
+        if (e == null) return "سبب غير معروف";
+        String msg = e.getMessage();
+        return e.getClass().getSimpleName() + (msg != null ? " (" + msg + ")" : "");
+    }
+
+    /** Shows the failure to the user instead of only writing it to logcat. */
+    private void reportError(String message) {
+        Log.e(TAG, message);
+        Notification n = new NotificationCompat.Builder(this, CallRecorderApp.CHANNEL_ID_COMPLETE)
+                .setContentTitle("لم يتم تسجيل المكالمة")
+                .setContentText(message)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+                .setSmallIcon(R.drawable.ic_notification)
+                .setAutoCancel(true)
+                .build();
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.notify(NOTIFICATION_ID_ERROR, n);
+    }
+
+    private String buildOutputFilePath(File directory) {
         String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
         String name;
 
@@ -271,7 +298,7 @@ public class CallRecorderService extends Service {
             default: ext = ".mp4"; break;
         }
 
-        return settingsManager.getStoragePath() + File.separator + name + ext;
+        return new File(directory, name + ext).getAbsolutePath();
     }
 
     private void saveRecordingToDatabase(final long duration) {
