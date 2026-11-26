@@ -14,6 +14,16 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
+    signingConfigs {
+        // Shared debug key committed to the repo so every build (local, Docker, CI)
+        // has the same signature and installs over the previous one. Debug only, not for release.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
@@ -21,6 +31,7 @@ android {
         }
         debug {
             applicationIdSuffix ".debug"
+            signingConfig signingConfigs.debug
         }
     }
     compileOptions {
