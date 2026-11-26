@@ -27,6 +27,7 @@ import com.callrecorder.app.activities.MainActivity;
 import com.callrecorder.app.database.AppDatabase;
 import com.callrecorder.app.models.Recording;
 import com.callrecorder.app.utils.ContactUtils;
+import com.callrecorder.app.utils.AccessibilityUtils;
 import com.callrecorder.app.utils.DiagLog;
 import com.callrecorder.app.utils.SettingsManager;
 
@@ -72,6 +73,7 @@ public class CallRecorderService extends Service {
                 + ", RECORD_AUDIO=" + granted(Manifest.permission.RECORD_AUDIO)
                 + ", READ_PHONE_STATE=" + granted(Manifest.permission.READ_PHONE_STATE)
                 + ", READ_CALL_LOG=" + granted(Manifest.permission.READ_CALL_LOG)
+                + ", accessibility=" + AccessibilityUtils.isServiceEnabled(this)
                 + ", autoRecord=" + settingsManager.isAutoRecordEnabled()
                 + ", quality=" + settingsManager.getRecordingQuality()
                 + ", storage=" + settingsManager.getStoragePath());
@@ -191,7 +193,9 @@ public class CallRecorderService extends Service {
                     }
                     startTime = System.currentTimeMillis();
                     isRecording = true;
-                    diag("Recording STARTED: source=" + source + " rate=" + config[1]
+                    diag("Recording STARTED: accessibility=" + AccessibilityUtils.isServiceEnabled(this)
+                            + " speaker=" + settingsManager.isRecordOnSpeakerEnabled()
+                            + " source=" + source + " rate=" + config[1]
                             + " bitrate=" + config[2] + " -> " + outputFile);
 
                     String contactDisplay = (phoneNumber != null) ?

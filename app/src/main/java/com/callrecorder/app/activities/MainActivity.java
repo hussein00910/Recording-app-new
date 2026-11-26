@@ -24,6 +24,10 @@ import com.callrecorder.app.services.CallRecorderService;
 import com.callrecorder.app.viewmodels.RecordingsViewModel;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
+import android.provider.Settings;
+
+import com.callrecorder.app.utils.AccessibilityUtils;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -138,6 +142,41 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("إلغاء", (d, w) ->
                         Toast.makeText(this, "لن يعمل التطبيق بدون الأذونات المطلوبة", Toast.LENGTH_LONG).show())
                 .setCancelable(false)
+                .show();
+    }
+
+    private boolean accessibilityPromptShown = false;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!accessibilityPromptShown
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                && !AccessibilityUtils.isServiceEnabled(this)) {
+            accessibilityPromptShown = true;
+            showAccessibilityDialog();
+        }
+    }
+
+    /**
+     * On Android 10+ the system gives ordinary apps silence when they record during a call;
+     * having the app's accessibility service enabled is what call recorders rely on to get audio.
+     */
+    private void showAccessibilityDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("تفعيل خدمة إمكانية الوصول")
+                .setMessage("بدون هذه الخدمة قد يُحفظ التسجيل صامتاً، لأن أندرويد 10 وما بعده يمنع التطبيقات "
+                        + "العادية من التقاط الصوت أثناء المكالمة.\n\n"
+                        + "في الشاشة التالية اختر «مسجّل المكالمات» (قد يكون تحت «التطبيقات المثبّتة» أو "
+                        + "«الخدمات التي تم تنزيلها») ثم فعّله.")
+                .setPositiveButton("تفعيل الآن", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch (Exception e) {
+                        Toast.makeText(this, "افتح الإعدادات ← إمكانية الوصول يدوياً", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("لاحقاً", null)
                 .show();
     }
 
