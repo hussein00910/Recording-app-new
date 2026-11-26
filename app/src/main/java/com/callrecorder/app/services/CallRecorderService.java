@@ -77,6 +77,11 @@ public class CallRecorderService extends Service {
                 diag("getMaxAmplitude failed: " + describe(e));
             }
             logSilencedState("poll");
+            if (samplesTotal == SILENCE_SWITCH_SECONDS && samplesWithSound == 0
+                    && currentSourceIndex < AUDIO_SOURCES.length - 1) {
+                switchToNextSource();
+                return;
+            }
             levelHandler.postDelayed(this, 1000);
         }
     };
@@ -190,13 +195,24 @@ public class CallRecorderService extends Service {
     }
 
     /** Audio sources tried in order; devices differ in which one is allowed during a call. */
+    /**
+     * Audio sources tried in order. VOICE_COMMUNICATION is last: Android treats it as a
+     * privacy-sensitive source and it often starts without error but records silence during a call.
+     */
     private static final int[] AUDIO_SOURCES = {
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
             MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
     };
+    /** Seconds of pure silence after which the next audio source is tried. */
+    private static final int SILENCE_SWITCH_SECONDS = 3;
+    private int currentSourceIndex;
 
     private void startRecording() {
+        startRecording(0);
+    }
+
+    private void startRecording(int firstSourceIndex) {
         if (isRecording) return;
 
         File directory = resolveStorageDirectory();
@@ -208,7 +224,8 @@ public class CallRecorderService extends Service {
 
         Exception lastError = null;
         int[][] configs = qualityLadder(settingsManager.getRecordingQuality());
-        for (int source : AUDIO_SOURCES) {
+        for (int si = firstSourceIndex; si < AUDIO_SOURCES.length; si++) {
+            int source = AUDIO_SOURCES[si];
             for (int[] config : configs) {
                 try {
                     mediaRecorder = new MediaRecorder();
@@ -218,10 +235,11 @@ public class CallRecorderService extends Service {
                     mediaRecorder.prepare();
                     mediaRecorder.start();
 
-                    if (source == MediaRecorder.AudioSource.MIC && settingsManager.isRecordOnSpeakerEnabled()) {
+                    if (settingsManager.isRecordOnSpeakerEnabled() && savedCallVolume < 0) {
                         enableLoudSpeaker();
                     }
-                    startTime = System.currentTimeMillis();
+                    currentSourceIndex = si;
+                    if (firstSourceIndex == 0) startTime = System.currentTimeMillis();
                     isRecording = true;
                     startLevelMonitoring();
                     diag("Recording STARTED: accessibility=" + AccessibilityUtils.isServiceEnabled(this)
@@ -362,6 +380,18 @@ public class CallRecorderService extends Service {
         }
         saveRecordingToDatabase(duration);
         showCompletedNotification(duration);
+    }
+
+    /** Current source delivers only silence: drop the silent file and record with the next source. */
+    private void switchToNextSource() {
+        diag("Source " + AUDIO_SOURCES[currentSourceIndex] + " silent for " + SILENCE_SWITCH_SECONDS
+                + "s, switching to next source");
+        stopLevelMonitoring();
+        try { mediaRecorder.stop(); } catch (Exception ignored) {}
+        releaseRecorder();
+        new File(outputFile).delete();
+        isRecording = false;
+        startRecording(currentSourceIndex + 1);
     }
 
     private void startLevelMonitoring() {
