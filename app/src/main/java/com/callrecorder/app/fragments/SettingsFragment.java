@@ -200,9 +200,15 @@ public class SettingsFragment extends Fragment {
                 r.setOutputFile(file.getAbsolutePath());
                 r.prepare();
                 r.start();
-                Thread.sleep(3000);
+                r.getMaxAmplitude(); // reset
+                int peak = 0;
+                for (int i = 0; i < 6; i++) {
+                    Thread.sleep(500);
+                    peak = Math.max(peak, r.getMaxAmplitude());
+                }
                 r.stop();
-                result = "نجح الاختبار ✅ حجم الملف " + file.length() + " بايت";
+                result = (peak > 0 ? "نجح الاختبار ✅ الميكروفون يلتقط صوتاً" : "⚠️ حُفظ الملف لكن الصوت صامت")
+                        + " (أعلى مستوى صوت " + peak + " من 32767، حجم الملف " + file.length() + " بايت)";
             } catch (Exception e) {
                 result = "فشل الاختبار ❌ " + e.getClass().getSimpleName()
                         + (e.getMessage() != null ? ": " + e.getMessage() : "");

@@ -12,6 +12,10 @@ import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.media.AudioRecordingConfiguration;
+import java.util.List;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -50,6 +54,32 @@ public class CallRecorderService extends Service {
     private boolean isRecording = false;
     private boolean inForeground = false;
     private int savedCallVolume = -1;
+
+    // Audio level monitoring: tells whether the system is feeding us real audio or silence
+    private final Handler levelHandler = new Handler(Looper.getMainLooper());
+    private int peakAmplitude;
+    private int samplesWithSound;
+    private int samplesTotal;
+    private Boolean lastSilenced;
+    private AudioManager.AudioRecordingCallback recordingCallback;
+    private final Runnable levelPoller = new Runnable() {
+        @Override
+        public void run() {
+            if (!isRecording || mediaRecorder == null) return;
+            try {
+                // max amplitude since the previous call; 0 means pure silence
+                int amp = mediaRecorder.getMaxAmplitude();
+                samplesTotal++;
+                if (amp > 0) samplesWithSound++;
+                if (amp > peakAmplitude) peakAmplitude = amp;
+                if (samplesTotal <= 3 || samplesTotal % 10 == 0) diag("Level sample " + samplesTotal + ": amplitude=" + amp);
+            } catch (Exception e) {
+                diag("getMaxAmplitude failed: " + describe(e));
+            }
+            logSilencedState("poll");
+            levelHandler.postDelayed(this, 1000);
+        }
+    };
     private String outputFile;
     private long startTime;
     private String phoneNumber;
@@ -193,6 +223,7 @@ public class CallRecorderService extends Service {
                     }
                     startTime = System.currentTimeMillis();
                     isRecording = true;
+                    startLevelMonitoring();
                     diag("Recording STARTED: accessibility=" + AccessibilityUtils.isServiceEnabled(this)
                             + " speaker=" + settingsManager.isRecordOnSpeakerEnabled()
                             + " source=" + source + " rate=" + config[1]
@@ -298,6 +329,9 @@ public class CallRecorderService extends Service {
         isRecording = false;
 
         long duration = System.currentTimeMillis() - startTime;
+        stopLevelMonitoring();
+        diag("Audio level summary: peak=" + peakAmplitude + " (max 32767), samples with sound="
+                + samplesWithSound + "/" + samplesTotal + ", systemSilenced=" + lastSilenced);
         boolean stopped = false;
         try {
             mediaRecorder.stop();
@@ -328,6 +362,60 @@ public class CallRecorderService extends Service {
         }
         saveRecordingToDatabase(duration);
         showCompletedNotification(duration);
+    }
+
+    private void startLevelMonitoring() {
+        peakAmplitude = 0;
+        samplesWithSound = 0;
+        samplesTotal = 0;
+        lastSilenced = null;
+        try { mediaRecorder.getMaxAmplitude(); } catch (Exception ignored) {} // reset counter
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            recordingCallback = new AudioManager.AudioRecordingCallback() {
+                @Override
+                public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs) {
+                    logSilencedState("callback");
+                }
+            };
+            try {
+                audioManager.registerAudioRecordingCallback(recordingCallback, levelHandler);
+            } catch (Exception e) {
+                diag("registerAudioRecordingCallback failed: " + describe(e));
+            }
+        }
+        levelHandler.postDelayed(levelPoller, 1000);
+    }
+
+    private void stopLevelMonitoring() {
+        levelHandler.removeCallbacks(levelPoller);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && recordingCallback != null) {
+            try { audioManager.unregisterAudioRecordingCallback(recordingCallback); } catch (Exception ignored) {}
+            recordingCallback = null;
+        }
+    }
+
+    /**
+     * Android 10+: AudioRecordingConfiguration.isClientSilenced() is true when the system's
+     * capture policy is feeding this app silence (e.g. during a call). Only logs changes.
+     */
+    private void logSilencedState(String from) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        try {
+            Boolean silenced = null;
+            List<AudioRecordingConfiguration> configs = audioManager.getActiveRecordingConfigurations();
+            for (AudioRecordingConfiguration c : configs) {
+                // non-privileged apps only see their own recordings here
+                silenced = (silenced != null && silenced) || c.isClientSilenced();
+            }
+            if (silenced == null ? lastSilenced != null : !silenced.equals(lastSilenced)) {
+                diag("System silencing state (" + from + "): isClientSilenced=" + silenced
+                        + " activeConfigs=" + configs.size()
+                        + " audioMode=" + audioManager.getMode());
+                lastSilenced = silenced;
+            }
+        } catch (Exception e) {
+            diag("isClientSilenced check failed: " + describe(e));
+        }
     }
 
     private void releaseRecorder() {
