@@ -3,6 +3,8 @@ package com.callrecorder.app.services;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.util.Log;
+
+import com.callrecorder.app.utils.DiagLog;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
@@ -19,7 +21,7 @@ public class CallRecorderAccessibilityService extends AccessibilityService {
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
         info.flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
         setServiceInfo(info);
-        Log.d(TAG, "Accessibility service connected");
+        DiagLog.log(this, TAG, "Accessibility service connected");
     }
 
     @Override

@@ -41,8 +41,10 @@ public class SettingsManager {
     public static final int THEME_DARK = 2;
 
     private final SharedPreferences prefs;
+    private final Context appContext;
 
     public SettingsManager(Context context) {
+        appContext = context.getApplicationContext();
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
@@ -182,10 +184,14 @@ public class SettingsManager {
         prefs.edit().putFloat(KEY_PLAYBACK_SPEED, speed).apply();
     }
 
-    private String getDefaultStoragePath() {
-        File directory = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MUSIC), "CallRecordings");
-        return directory.getAbsolutePath();
+    /**
+     * App-specific directory: always writable on every Android version and needs no
+     * storage permission (public folders such as Music/ are blocked by scoped storage).
+     */
+    public String getDefaultStoragePath() {
+        File base = appContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC);
+        if (base == null) base = new File(appContext.getFilesDir(), "Music");
+        return new File(base, "CallRecordings").getAbsolutePath();
     }
 
     public void resetToDefaults() {

@@ -298,6 +298,31 @@
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <!-- Diagnostics -->
+                <LinearLayout android:id="@+id/row_test_recording" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="اختبار التسجيل (3 ثوانٍ) 🎙️" android:textSize="15sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
+                <LinearLayout android:id="@+id/row_diagnostics" android:layout_width="match_parent"
+                    android:layout_height="56dp" android:orientation="horizontal"
+                    android:paddingHorizontal="16dp" android:gravity="center_vertical"
+                    android:clickable="true" android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                        android:text="سجل التشخيص 🩺" android:textSize="15sp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="?attr/colorOutlineVariant" android:layout_marginHorizontal="16dp" />
+
                 <!-- Rate -->
                 <LinearLayout android:id="@+id/row_rate" android:layout_width="match_parent"
                     android:layout_height="56dp" android:orientation="horizontal"

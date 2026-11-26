@@ -9,6 +9,7 @@ import android.util.Log;
 
 import com.callrecorder.app.CallRecorderApp;
 import com.callrecorder.app.services.CallRecorderService;
+import com.callrecorder.app.utils.DiagLog;
 import com.callrecorder.app.utils.SettingsManager;
 
 public class CallReceiver extends BroadcastReceiver {
@@ -17,6 +18,8 @@ public class CallReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        DiagLog.log(context, TAG, "Broadcast " + intent.getAction()
+                + " state=" + intent.getStringExtra(TelephonyManager.EXTRA_STATE));
         SettingsManager settings = CallRecorderApp.getSettingsManager();
         if (!settings.isAutoRecordEnabled()) return;
 
@@ -48,10 +51,16 @@ public class CallReceiver extends BroadcastReceiver {
         if (phoneNumber != null) serviceIntent.putExtra("phone_number", phoneNumber);
         serviceIntent.putExtra("call_type", callType);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent);
-        } else {
-            context.startService(serviceIntent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+        } catch (Exception e) {
+            // Android 12+ may refuse to start a foreground service from the background.
+            // The service started from MainActivity keeps listening for call state anyway.
+            DiagLog.log(context, TAG, "Could not start service from receiver: " + e);
         }
     }
 }
