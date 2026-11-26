@@ -44,6 +44,7 @@ public class CallRecorderService extends Service {
     private MediaRecorder mediaRecorder;
     private boolean isRecording = false;
     private boolean inForeground = false;
+    private int savedCallVolume = -1;
     private String outputFile;
     private long startTime;
     private String phoneNumber;
@@ -142,33 +143,37 @@ public class CallRecorderService extends Service {
         outputFile = buildOutputFilePath(directory);
 
         Exception lastError = null;
+        int[][] configs = qualityLadder(settingsManager.getRecordingQuality());
         for (int source : AUDIO_SOURCES) {
-            try {
-                mediaRecorder = new MediaRecorder();
-                mediaRecorder.setAudioSource(source);
-                applyQualitySettings();
-                mediaRecorder.setOutputFile(outputFile);
-                mediaRecorder.prepare();
-                mediaRecorder.start();
+            for (int[] config : configs) {
+                try {
+                    mediaRecorder = new MediaRecorder();
+                    mediaRecorder.setAudioSource(source);
+                    applyQualitySettings(config);
+                    mediaRecorder.setOutputFile(outputFile);
+                    mediaRecorder.prepare();
+                    mediaRecorder.start();
 
-                if (source == MediaRecorder.AudioSource.MIC && settingsManager.isRecordOnSpeakerEnabled()) {
-                    audioManager.setSpeakerphoneOn(true);
+                    if (source == MediaRecorder.AudioSource.MIC && settingsManager.isRecordOnSpeakerEnabled()) {
+                        enableLoudSpeaker();
+                    }
+                    startTime = System.currentTimeMillis();
+                    isRecording = true;
+                    Log.d(TAG, "Recording started: source=" + source + " rate=" + config[1]
+                            + " bitrate=" + config[2] + " -> " + outputFile);
+
+                    String contactDisplay = (phoneNumber != null) ?
+                            ContactUtils.getContactName(this, phoneNumber) : null;
+                    if (contactDisplay == null || contactDisplay.isEmpty()) contactDisplay = phoneNumber;
+                    showRecordingNotification(contactDisplay != null ? contactDisplay : "مكالمة");
+                    return;
+                } catch (Exception e) {
+                    // RuntimeException ("start failed") is common here, not only IOException
+                    Log.w(TAG, "source=" + source + " rate=" + config[1] + " failed", e);
+                    lastError = e;
+                    releaseRecorder();
+                    new File(outputFile).delete();
                 }
-                startTime = System.currentTimeMillis();
-                isRecording = true;
-                Log.d(TAG, "Recording started with audio source " + source + " -> " + outputFile);
-
-                String contactDisplay = (phoneNumber != null) ?
-                        ContactUtils.getContactName(this, phoneNumber) : null;
-                if (contactDisplay == null || contactDisplay.isEmpty()) contactDisplay = phoneNumber;
-                showRecordingNotification(contactDisplay != null ? contactDisplay : "مكالمة");
-                return;
-            } catch (Exception e) {
-                // RuntimeException ("start failed") is common here, not only IOException
-                Log.w(TAG, "Audio source " + source + " failed", e);
-                lastError = e;
-                releaseRecorder();
-                new File(outputFile).delete();
             }
         }
         reportError("تعذّر بدء التسجيل: " + describe(lastError));
@@ -186,31 +191,69 @@ public class CallRecorderService extends Service {
         return null;
     }
 
-    private void applyQualitySettings() {
-        int quality = settingsManager.getRecordingQuality();
+    private static final int CODEC_AAC = 0;
+    private static final int CODEC_AMR_NB = 1;
+
+    /**
+     * Encoder settings per quality level, best first: {codec, sampleRate, bitRate}.
+     * If the device rejects one, the next (more widely supported) one is tried.
+     * Mono only: call audio is mono, and requesting stereo makes start() fail on some devices.
+     */
+    private static int[][] qualityLadder(int quality) {
         switch (quality) {
             case SettingsManager.QUALITY_HIGH:
-                mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                mediaRecorder.setAudioSamplingRate(44100);
-                mediaRecorder.setAudioEncodingBitRate(128000);
-                // Call audio is mono; requesting 2 channels makes start() fail on some devices
-                mediaRecorder.setAudioChannels(1);
-                break;
+                return new int[][]{
+                        {CODEC_AAC, 48000, 192000},
+                        {CODEC_AAC, 44100, 128000},
+                        {CODEC_AAC, 16000, 64000},
+                };
             case SettingsManager.QUALITY_LOW:
-                mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-                mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-                mediaRecorder.setAudioSamplingRate(8000);
-                mediaRecorder.setAudioEncodingBitRate(12200);
-                break;
+                return new int[][]{
+                        {CODEC_AMR_NB, 8000, 12200},
+                };
             case SettingsManager.QUALITY_MEDIUM:
             default:
-                mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                mediaRecorder.setAudioSamplingRate(22050);
-                mediaRecorder.setAudioEncodingBitRate(64000);
-                mediaRecorder.setAudioChannels(1);
-                break;
+                return new int[][]{
+                        {CODEC_AAC, 32000, 96000},
+                        {CODEC_AAC, 16000, 64000},
+                };
+        }
+    }
+
+    private void applyQualitySettings(int[] config) {
+        if (config[0] == CODEC_AMR_NB) {
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+        } else {
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            mediaRecorder.setAudioChannels(1);
+        }
+        mediaRecorder.setAudioSamplingRate(config[1]);
+        mediaRecorder.setAudioEncodingBitRate(config[2]);
+    }
+
+    /** Speaker on with call volume at max, so the other party is captured clearly by the mic. */
+    private void enableLoudSpeaker() {
+        try {
+            savedCallVolume = audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+            audioManager.setSpeakerphoneOn(true);
+            audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL,
+                    audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL), 0);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not enable loud speaker", e);
+        }
+    }
+
+    private void restoreSpeaker() {
+        try {
+            audioManager.setSpeakerphoneOn(false);
+            if (savedCallVolume >= 0) {
+                audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, savedCallVolume, 0);
+                savedCallVolume = -1;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not restore speaker", e);
         }
     }
 
@@ -228,7 +271,7 @@ public class CallRecorderService extends Service {
             Log.e(TAG, "Error stopping recording", e);
         }
         releaseRecorder();
-        audioManager.setSpeakerphoneOn(false);
+        restoreSpeaker();
         cancelRecordingNotification();
         restoreServiceNotification();
 

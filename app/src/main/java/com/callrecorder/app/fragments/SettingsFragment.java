@@ -145,7 +145,7 @@ public class SettingsFragment extends Fragment {
     }
 
     private void showQualityDialog() {
-        String[] options = {"منخفضة (AMR - 8 kbps)", "متوسطة (AAC - 128 kbps)", "عالية (AAC - 256 kbps)"};
+        String[] options = {"منخفضة (AMR - 12 kbps، أصغر حجم)", "متوسطة (AAC - 96 kbps)", "عالية (AAC - 192 kbps، أفضل جودة)"};
         int current = settings.getRecordingQuality();
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("جودة التسجيل")
